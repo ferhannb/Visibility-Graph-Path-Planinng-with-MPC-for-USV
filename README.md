@@ -100,6 +100,35 @@ The result is a smooth, dynamically feasible reference trajectory without curvat
 - **Adjustable turning radius** shows trade-off between path length and maneuverability.  
 - **Obstacle-rich environments**: VG (global) + NMPC (local) ensures both collision avoidance and curvature feasibility.  
 - Computation time: **20–30 ms per NMPC step** on Intel i7-11800H → suitable for real-time implementation.  
+## Results
+
+### Environment Test 1
+Visibility Graph + Smoothed Path:
+
+![Environment Test 1](docs/img/EnvTest1.png)
+
+Optimal control signals (ds and curvature K):
+
+![Environment Test 1 Control](docs/img/EnvTest1Kontrol.png)
+
+---
+
+### Environment Test 2
+Visibility Graph + Smoothed Path:
+
+![Environment Test 2](img/EnvTest2.png)
+
+Optimal control signals (ds and curvature K):
+
+![Environment Test 2 Control](img/EnvTest2Kontrol.png)
+
+---
+
+### Long-Range Route Examples
+Smoothed trajectories for larger environments:
+
+![Route 1](img/Rota1.png)  
+![Route 2](img/Rota2.png)
 
 ---
 
