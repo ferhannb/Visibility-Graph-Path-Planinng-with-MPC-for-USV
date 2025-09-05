@@ -43,11 +43,11 @@ For numerical integration, a **sinc-based update** is used.
 This unifies straight ($\kappa = 0$) and curved ($\kappa \neq 0$) motion in a single formula:
 
 $$
-x_{k+1} = x_k + \Delta s \cdot \mathrm{sinc}\!\left(\tfrac{\Delta \chi}{2}\right) \cos\!\left(\chi_k + \tfrac{\Delta \chi}{2}\right)
+x_{k+1} = x_k + \Delta s \cdot \mathrm{sinc}\left(\tfrac{\Delta \chi}{2}\right) \cos\left(\chi_k + \tfrac{\Delta \chi}{2}\right)
 $$
 
 $$
-y_{k+1} = y_k + \Delta s \cdot \mathrm{sinc}\!\left(\tfrac{\Delta \chi}{2}\right) \sin\!\left(\chi_k + \tfrac{\Delta \chi}{2}\right)
+y_{k+1} = y_k + \Delta s \cdot \mathrm{sinc}\left(\tfrac{\Delta \chi}{2}\right) \sin\left(\chi_k + \tfrac{\Delta \chi}{2}\right)
 $$
 
 with
