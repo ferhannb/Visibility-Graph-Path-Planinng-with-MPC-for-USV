@@ -105,11 +105,11 @@ The result is a smooth, dynamically feasible reference trajectory without curvat
 ### Environment Test 1
 Visibility Graph + Smoothed Path:
 
-![Environment Test 1](docs/img/EnvTest1.png)
+![Environment Test 1](img/EnvTest1.png)
 
 Optimal control signals (ds and curvature K):
 
-![Environment Test 1 Control](docs/img/EnvTest1Kontrol.png)
+![Environment Test 1 Control](img/EnvTest1Kontrol.png)
 
 ---
 
