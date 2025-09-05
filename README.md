@@ -23,9 +23,9 @@ $$
 \frac{d\chi}{ds} = \kappa(s)
 $$
 
-- \( \chi \): course angle (tangent direction)  
-- \( \kappa(s) \): curvature profile along the path  
-- \( s \): arc length (progress along the path)  
+- $$\( \chi \)$$: course angle (tangent direction)  
+- $$\( \kappa(s) \)$$: curvature profile along the path  
+- $$\( s \)$$: arc length (progress along the path)  
 
 **Speed-dependent turning constraint:**
 
