@@ -1,109 +1,114 @@
 # Curvature-Based Vessel Motion Modeling  
 *A Kinematic Approach for Real-Time Path Planning and Predictive Navigation*
 
-[![Conference](https://img.shields.io/badge/Conference-AYO%20Colloquium%202025-blue)](https://)  
+[![Conference](https://img.shields.io/badge/Conference-AYO%20Colloquium%202025-blue)](#)  
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)  
 
 ---
 
-## About This Work  
+## Path Planning Methodology
 
-This repository contains code, examples, and supplementary material for the article:  
-
-**Curvature-Based Vessel Motion Modeling: A Kinematic Approach for Real-Time Path Planning and Predictive Navigation**  
-
----
-
-## Motivation  
-
-Path planning for **Unmanned Surface Vessels (USVs)** is fundamentally different from ground robots or aerial drones.  
-- USVs cannot perform **sharp waypoint transitions** due to hydrodynamic constraints.  
-- The **minimum turning radius** grows with speed and is bounded by rudder angle limits.  
-- Classical shortest-path planners (straight segments, waypoints) produce **dynamically infeasible trajectories**.  
-
-This project introduces a **curvature-based kinematic framework** that reformulates vessel motion in terms of:  
-- **Curvature (κ)** – directly linked to rudder angle and maneuvering capability.  
-- **Arc length (s)** – progression along the path, linked to surge speed.  
-
-This formulation naturally enforces turning radius limits and produces **smooth, feasible, and controller-friendly paths**.  
+This project introduces a **curvature-based kinematic path planning method** for Unmanned Surface Vessels (USVs).  
+The goal is to generate collision-free, dynamically feasible routes that respect **minimum turning radius**, **curvature continuity**, and **obstacle avoidance**.  
 
 ---
 
-## Methodology  
+### 1. Curvilinear Kinematic Formulation
 
-The methodology has three main pillars:  
+Vessel motion is reformulated in arc-length coordinates:
 
-### 1. Curvilinear Kinematic Formulation  
-We reformulate the vessel dynamics in arc-length coordinates:  
-
-\[
-\frac{dx}{ds} = \cos(\chi(s)), \quad 
-\frac{dy}{ds} = \sin(\chi(s)), \quad 
+$$
+\frac{dx}{ds} = \cos(\chi(s)), \quad
+\frac{dy}{ds} = \sin(\chi(s)), \quad
 \frac{d\chi}{ds} = \kappa(s)
-\]
+$$
 
-- \( \chi \): course angle  
+- \( \chi \): course angle (tangent direction)  
 - \( \kappa(s) \): curvature profile along the path  
-- This representation is **vehicle-agnostic** and compact, relying only on steady-state turning data.  
+- \( s \): arc length (progress along the path)  
+
+**Speed-dependent turning constraint:**
+
+$$
+|\kappa(s)| \leq \kappa_{\max}(u) := \frac{1}{R_{\min}(u)}
+$$
+
+where \( R_{\min}(u) \) is the minimum turning radius at speed \( u \).  
 
 ---
 
 ### 2. Sinc-Based Discretization  
-A new discretization scheme is applied for numerical robustness:  
 
-\[
-x_{k+1} = x_k + \Delta s \, \text{sinc}\!\left(\frac{\Delta \chi}{2}\right) \cos\!\left(\chi_k + \frac{\Delta \chi}{2}\right)
-\]  
+For numerical integration, a **sinc-based update** is used.  
+This unifies straight ($\kappa = 0$) and curved ($\kappa \neq 0$) motion in a single formula:
 
-\[
-y_{k+1} = y_k + \Delta s \, \text{sinc}\!\left(\frac{\Delta \chi}{2}\right) \sin\!\left(\chi_k + \frac{\Delta \chi}{2}\right)
-\]
+$$
+x_{k+1} = x_k + \Delta s \cdot \mathrm{sinc}\!\left(\tfrac{\Delta \chi}{2}\right) \cos\!\left(\chi_k + \tfrac{\Delta \chi}{2}\right)
+$$
 
-- **Unifies straight and curved motion** in a single update.  
-- Eliminates singularities as curvature → 0.  
-- Provides smooth numerical integration across path segments.  
+$$
+y_{k+1} = y_k + \Delta s \cdot \mathrm{sinc}\!\left(\tfrac{\Delta \chi}{2}\right) \sin\!\left(\chi_k + \tfrac{\Delta \chi}{2}\right)
+$$
 
----
+with
 
-### 3. Hierarchical Planning Architecture  
+$$
+\Delta \chi = \kappa_k \cdot \Delta s, 
+\quad 
+\mathrm{sinc}(x) = \frac{\sin(x)}{x}, 
+\quad 
+\mathrm{sinc}(0) = 1
+$$  
 
-The planning pipeline has **two levels**:  
-
-1. **Global Planner**  
-   - Builds a **visibility graph** over quadtree-sampled free space.  
-   - Uses A* search to generate a collision-free, shortest waypoint chain.  
-   - Fast, but curvature-agnostic.  
-
-2. **Local Refinement (Offline NMPC)**  
-   - Optimizes curvature \( \kappa_k \) and arc-length steps \( \Delta s_k \).  
-   - Enforces:  
-     - Speed-dependent turning radius limits.  
-     - Obstacle clearance.  
-     - Continuity of curvature across waypoints.  
-   - Solved with **CasADi + IPOPT**.  
-   - Produces **smooth, dynamically feasible reference trajectories**.  
+This ensures continuity at $\kappa \to 0$ and eliminates discontinuities between straight and curved segments.  
 
 ---
 
-## Key Contributions  
+### 3. Hierarchical Planning Pipeline  
 
-- **Curvature-aware kinematics**: A closed-form mapping from curvature profiles to Cartesian paths.  
-- **Numerically robust discretization**: Sinc formulation ensuring smooth transition between straight and curved motion.  
-- **Hierarchical planning**:  
-  - Global collision-free routes via quadtree-based visibility graphs.  
-  - Local refinement with NMPC for curvature continuity and dynamic feasibility.  
-- **Simulation-validated**: Realistic obstacle scenarios demonstrate feasibility, smoothness, and real-time suitability.  
+The planning framework has **two levels**:  
+
+#### (a) Global Path Planning  
+- Builds a **visibility graph** over quadtree-sampled free space.  
+- Uses A* search to generate a collision-free waypoint chain.  
+- Efficient, but curvature-agnostic.  
+
+#### (b) Local Refinement (NMPC Smoothing)  
+- Refines waypoints using **Curvilinear NMPC**.  
+- Decision variables: \( \kappa_k, \Delta s_k \)  
+- Constraints:  
+
+$$
+|\kappa_k| \leq \kappa_{\max}(u_k), \quad \Delta s_k \geq 0, \quad \text{obstacle clearance}
+$$  
+
+- Stage cost:  
+
+$$
+\ell_k = w_p \| [x_k, y_k] - [x^{ref}_k, y^{ref}_k] \|^2+ w_\kappa (\kappa_k - \kappa_{k-1})^2+ w_s (\Delta s_k - \bar{s})^2
+$$  
+
+- Solved with **CasADi + IPOPT**.  
+
+The result is a smooth, dynamically feasible reference trajectory without curvature discontinuities.  
 
 ---
 
-## Results  
+### 4. Results  
 
-- Sharp waypoint turns are replaced with **feasible arcs** that respect vessel dynamics.  
-- Adjustable turning radius constraint shows trade-off between path length and maneuverability.  
-- Obstacle-rich environments are handled by combining **global visibility graphs** with **curvature-constrained refinement**.  
-- Computation time per NMPC step: **20–30 ms** on Intel i7-11800H — suitable for real-time.  
+- **Sharp waypoint turns** are replaced by **feasible arcs**.  
+- **Adjustable turning radius** shows trade-off between path length and maneuverability.  
+- **Obstacle-rich environments**: VG (global) + NMPC (local) ensures both collision avoidance and curvature feasibility.  
+- Computation time: **20–30 ms per NMPC step** on Intel i7-11800H → suitable for real-time implementation.  
 
 ---
 
-## Repository Structure  
+
+@inproceedings{Buyukcolak2025Curvature,
+  title={Curvature-Based Vessel Motion Modeling: A Kinematic Approach for Real-Time Path Planning and Predictive Navigation},
+  author={Büyükçolak, Ferhan and Tayyar, Gökhan Tansel},
+  booktitle={A. Yücel Odabaşı Colloquium Series: 5th International Meeting on Advances in Marine Robotics and Autonomous Systems},
+  year={2025},
+  address={Istanbul, Turkey}
+}
 
