@@ -1,4 +1,4 @@
-# Curvature-Based Vessel Motion Modeling  
+# Curvature-Based Path Planning  
 *A Kinematic Approach for Real-Time Path Planning and Predictive Navigation*
 
 [![Conference](https://img.shields.io/badge/Conference-AYO%20Colloquium%202025-blue)](#)  
