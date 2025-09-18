@@ -122,16 +122,6 @@ Optimal control signals (ds and curvature K):
 
 ![Environment Test 2 Control](img/EnvTest2Kontrol.png)
 
----
-
-### Long-Range Route Examples
-Smoothed trajectories for larger environments:
-
-![Route 1](img/Rota1.png)  
-![Route 2](img/Rota2.png)
-
----
-
 
 @inproceedings{Buyukcolak2025Curvature,
   title={Curvature-Based Vessel Motion Modeling: A Kinematic Approach for Real-Time Path Planning and Predictive Navigation},
