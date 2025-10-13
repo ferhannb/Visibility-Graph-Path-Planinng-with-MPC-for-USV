@@ -1,8 +1,6 @@
 # Curvature-Based Path Planning  
 *A Kinematic Approach for Real-Time Path Planning and Predictive Navigation*
 
-[![Conference](https://img.shields.io/badge/Conference-AYO%20Colloquium%202025-blue)](#)  
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)  
 
 ---
 
@@ -123,11 +121,4 @@ Optimal control signals (ds and curvature K):
 ![Environment Test 2 Control](img/EnvTest2Kontrol.png)
 
 
-@inproceedings{Buyukcolak2025Curvature,
-  title={Curvature-Based Vessel Motion Modeling: A Kinematic Approach for Real-Time Path Planning and Predictive Navigation},
-  author={Büyükçolak, Ferhan and Tayyar, Gökhan Tansel},
-  booktitle={A. Yücel Odabaşı Colloquium Series: 5th International Meeting on Advances in Marine Robotics and Autonomous Systems},
-  year={2025},
-  address={Istanbul, Turkey}
-}
 
