@@ -62,6 +62,48 @@ This ensures continuity at $\kappa \to 0$ and eliminates discontinuities between
 
 ---
 
+---
+
+## Curvature Interpretation
+
+In the proposed formulation, the curvature variable **\( K \)** has a direct control interpretation.
+
+Rather than being a purely geometric parameter, **\( K \) represents the rudder command (steering input)** of the vessel:
+
+\[
+K \equiv \kappa(s)
+\]
+
+Physically, curvature emerges as the kinematic consequence of steering action:
+
+- Rudder deflection → lateral hydrodynamic force  
+- Lateral force → yaw rate generation  
+- Yaw rate → path curvature  
+
+Under the low-speed kinematic assumption:
+
+\[
+\kappa \approx \frac{r}{u}
+\]
+
+where:
+
+- \( r \): yaw rate  
+- \( u \): surge velocity  
+
+Therefore, regulating curvature is equivalent to regulating steering behavior.
+
+Practical interpretation:
+
+- \( K > 0 \) → starboard turn  
+- \( K < 0 \) → port turn  
+- \( K = 0 \) → straight motion  
+
+This interpretation allows the NMPC to operate on a steering-like variable while preserving geometric smoothness and curvature continuity.
+
+> **Note:** This interpretation is valid under a kinematic / low-sideslip assumption, where curvature is primarily governed by steering action.
+
+
 ### 3. Hierarchical Planning Pipeline  
 
 The planning framework has **two levels**:  
