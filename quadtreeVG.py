@@ -6,7 +6,7 @@ matplotlib.use('TkAgg')
 # ───────────────────────────── Geometry helpers ─────────────────────────────
 Point   = Tuple[float, float]
 Polygon = List[Point]
-def orient(a, b, c):  # çapraz çarpım
+def orient(a, b, c):  # cross product
     return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
 
 def on_seg(a, b, c):
@@ -89,7 +89,7 @@ class ClassicVisibilityGraph:
 
 # ─────────────────────── Quadtree + Lazy Edge VG ────────────────────────────
 class QuadtreeVisibilityGraph(ClassicVisibilityGraph):
-    class Quad:  # basit quadtree
+    class Quad:  # simple quadtree
         def __init__(self,bbox,depth): self.bbox=bbox; self.depth=depth; self.children=[]
         def leaf(self): return not self.children
 
@@ -161,4 +161,3 @@ class QuadtreeVisibilityGraph(ClassicVisibilityGraph):
         path=[]; cur=g
         while cur is not None: path.append(self.nodes[cur]); cur=prev[cur]
         return path[::-1]
-

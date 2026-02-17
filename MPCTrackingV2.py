@@ -20,24 +20,24 @@ matplotlib.use("TkAgg")
 
 
 # ----------------------------------------------------------------------
-#  Yardımcı: tüm yolu örnekleyerek global referans dizisi üret
+#  Helper: generate a global reference sequence by sampling the full path
 # ----------------------------------------------------------------------
 def _uniform_reference_from_waypoints(wp: np.ndarray,
                                       ds_const: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Waypoint dizisini tek "s" ekseninde sabit Δs ile örnekler.
-    Rotadaki her kırılma noktasında θ doğru kalır.
+    Samples waypoint sequence along a single "s" axis with constant Delta s.
+    Keeps theta consistent at each route break point.
     """
-    # 1) Her segment uzunluğu ve kümülatifi
+    # 1) Segment lengths and cumulative distance
     seg_L   = np.linalg.norm(np.diff(wp, axis=0), axis=1)
     cum_L   = np.insert(np.cumsum(seg_L), 0, 0.0)
     L_tot   = cum_L[-1]
 
-    # 2) Sabit aralıklı s grid’i
+    # 2) Uniformly spaced s-grid
     s_grid  = np.arange(0.0, L_tot, ds_const)
     xs, ys, ths = [], [], []
 
-    # 3) Her s için ait olduğu segmenti bul
+    # 3) Find the segment corresponding to each s value
     for s in s_grid:
         idx = np.searchsorted(cum_L, s, side="right") - 1
         s0  = cum_L[idx]
@@ -47,7 +47,7 @@ def _uniform_reference_from_waypoints(wp: np.ndarray,
         theta = np.arctan2(*(p1 - p0)[::-1])  # atan2(dy,dx)
         xs.append(pos[0]); ys.append(pos[1]); ths.append(theta)
 
-    # 4) Final waypoint’i mutlaka ekle
+    # 4) Always append final waypoint
     xs.append(wp[-1,0]); ys.append(wp[-1,1]); ths.append(ths[-1])
     return np.asarray(xs), np.asarray(ys), np.asarray(ths)
 
@@ -57,29 +57,29 @@ def _uniform_reference_from_waypoints(wp: np.ndarray,
 # ----------------------------------------------------------------------
 @dataclass
 class PathOptimizer:
-    # ---- kinematik temel -------------------------------------------
+    # ---- kinematic base --------------------------------------------
     X_init: float
     Y_init: float
     theta_init: float
 
-    # ---- hedef / yol  ----------------------------------------------
-    target_type: str = "point"          # 'point' (tek nokta)  / 'trajectory'
+    # ---- target / path  --------------------------------------------
+    target_type: str = "point"          # 'point' (single target) / 'trajectory'
     x_ref: Optional[Union[float, np.ndarray]] = None
     y_ref: Optional[Union[float, np.ndarray]] = None
     theta_ref: Optional[Union[float, np.ndarray]] = None
-    waypoints: Optional[np.ndarray] = None   # (M,2)  -> yol takibi
+    waypoints: Optional[np.ndarray] = None   # (M,2) -> path tracking
     v_desired: float = 3.0
     dt: float = 0.3
-    tol: float = 4.0                         # segment bitiş toleransı
+    tol: float = 4.0                         # segment end tolerance
 
-    # ---- ayrıklaştırma / sınırlar ----------------------------------
+    # ---- discretization / bounds -----------------------------------
     N: int = 40
     ds_max: float = 5.0
 
     K_max: float = 1
     max_iter: int = 800
 
-    # ---- ağırlıklar -------------------------------------------------
+    # ---- weights ----------------------------------------------------
     w_pos: float = 40.0
     w_theta: float = 10.0
     w_ds_change: float = 1.0
@@ -92,30 +92,30 @@ class PathOptimizer:
 
     solver_opts: dict | None = field(default_factory=dict)
 
-    # ----------------- dahili bufferlar -----------------------------
+    # ----------------- internal buffers ------------------------------
     X_sol: np.ndarray | None = field(init=False, default=None)
     Y_sol: np.ndarray | None = field(init=False, default=None)
     TH_sol: np.ndarray | None = field(init=False, default=None)
     ds_sol: np.ndarray | None = field(init=False, default=None)
     K_sol: np.ndarray | None = field(init=False, default=None)
 
-    # grafik için MPC log
+    # MPC logs for plotting
     mpc_X_hist: list[float] = field(init=False, default_factory=list, repr=False)
     mpc_Y_hist: list[float] = field(init=False, default_factory=list, repr=False)
     mpc_TH_hist: list[float] = field(init=False, default_factory=list, repr=False)
     mpc_ds_hist: list[float] = field(init=False, default_factory=list, repr=False)
     mpc_K_hist: list[float] = field(init=False, default_factory=list, repr=False)
 
-        # --- global referans dizileri ---
+        # --- global reference arrays ---
     x_ref_full: np.ndarray | None = field(init=False, default=None, repr=False)
     y_ref_full: np.ndarray | None = field(init=False, default=None, repr=False)
     th_ref_full: np.ndarray | None = field(init=False, default=None, repr=False)
-    ref_index: int = field(init=False, default=0, repr=False)   # ufkun başlangıcı
+    ref_index: int = field(init=False, default=0, repr=False)   # horizon start index
 
-    # yol-takip için durum
+    # path-tracking state
     current_segment_idx: int = field(init=False, default=0, repr=False)
 
-    # ---- sembolik tutamaçlar (build_once) ---------------------------
+    # ---- symbolic handles (build_once) ------------------------------
     _built: bool = field(init=False, default=False, repr=False)
     _opti: ca.Opti = field(init=False, repr=False)
     _X: ca.MX = field(init=False, repr=False)
@@ -132,7 +132,7 @@ class PathOptimizer:
 
     def __post_init__(self):
         if self.waypoints is not None:
-            ds_const = self.v_desired * self.dt      # veya bölünebilir hâle yuvarla
+            ds_const = self.v_desired * self.dt      # or round to a divisible step size
             (self.x_ref_full,
             self.y_ref_full,
             self.th_ref_full) = _uniform_reference_from_waypoints(
@@ -143,33 +143,33 @@ class PathOptimizer:
     #  MPC STEP  ------------------------------------------------------
     # ================================================================
     def mpc_step(self, x: float, y: float, theta: float) -> Tuple[float, float]:
-        """Receding-horizon çöz, ilk kontrolü döndür."""
+        """Solve receding-horizon problem and return first control."""
         self._build_nlp()                       # no-op after first time
         self._update_state(x, y, theta)
 
-        # --- yol takibi yapılacaksa referans üret -------------------
+        # --- generate reference if path tracking is active ------------
         # --- use precomputed global ref, advancing one step each call ---
         # ------------------------------------------------------------
-        #  💡 GÜNCELLENMİŞ REFERANS BLOĞU
+        #  Updated reference block
         # ------------------------------------------------------------
-        #  🔄  YENİ GLOBAL REFERANS – izdüşüm bazlı ufuk
+        #  New global reference - projection-based horizon
         # ------------------------------------------------------------
         if self.x_ref_full is not None:
             N = self.N
             p_now = np.array([x, y])
 
-            # 1) En yakın referans indeksini bul (tüm dizide)
+            # 1) Find nearest reference index (across whole array)
             d2_all = (self.x_ref_full - p_now[0])**2 + (self.y_ref_full - p_now[1])**2
             self.ref_index = int(np.argmin(d2_all))
 
-            # 2) Ufuk dilimini al
+            # 2) Take horizon slice
             i0 = self.ref_index
             i1 = min(i0 + N + 1, len(self.x_ref_full))
             x_h  = self.x_ref_full[i0:i1]
             y_h  = self.y_ref_full[i0:i1]
             th_h = self.th_ref_full[i0:i1]
 
-            # 3) Eksik kalırsa – son segment yönünde uzat
+            # 3) If short, extend in direction of last segment
             if len(x_h) < N + 1:
                 if len(x_h) >= 2:
                     dx = x_h[-1] - x_h[-2]
@@ -184,7 +184,7 @@ class PathOptimizer:
                     y_h = np.append(y_h,  y_h[-1] + dy)
                     th_h= np.append(th_h, th_h[-1])
 
-            # 4) CasADi parametrelerine yükle
+            # 4) Load into CasADi parameters
             self._opti.set_value(self._x_ref_p, x_h)
             self._opti.set_value(self._y_ref_p, y_h)
             self._opti.set_value(self._th_ref_p, th_h)
@@ -210,7 +210,7 @@ class PathOptimizer:
         return ds_cmd, K_cmd
 
     # ================================================================
-    #  One-shot çözüm (isteğe bağlı) ----------------------------------
+    #  One-shot solve (optional) --------------------------------------
     # ================================================================
     def solve(self, **state_override):
         self._build_nlp()
@@ -223,7 +223,7 @@ class PathOptimizer:
         return (self.X_sol, self.Y_sol, self.TH_sol, self.ds_sol, self.K_sol)
 
     # ================================================================
-    #  NLP modelini kur (bir kere) ------------------------------------
+    #  Build NLP model (once) -----------------------------------------
     # ================================================================
     def _build_nlp(self):
         if self._built:
@@ -241,7 +241,7 @@ class PathOptimizer:
         y0_p = opti.parameter()
         th0_p = opti.parameter()
 
-        # referans parametreleri (N+1 uzunlukta)
+        # reference parameters (length N+1)
         x_ref_p = opti.parameter(self.N + 1)
         y_ref_p = opti.parameter(self.N + 1)
         th_ref_p = opti.parameter(self.N + 1)
@@ -289,7 +289,7 @@ class PathOptimizer:
             obj_pos += self.w_pos * pos_err
             obj_th += self.w_theta * th_err
             obj_path += self.w_ds_total * ds[k] 
-            obj_Kmag += self.w_K_mag * K[k]**2           # 🔹 K büyüklüğü
+            obj_Kmag += self.w_K_mag * K[k]**2           # curvature magnitude penalty
 
             if k < self.N - 1:
                 obj_smooth += self.w_ds_change * (ds[k+1] - ds[k])**2
@@ -309,7 +309,7 @@ class PathOptimizer:
             opts.setdefault(sec, {}).update(d)
         opti.solver("ipopt", opts)
 
-        # tutamaçları sakla
+        # store handles
         self._opti = opti
         self._X, self._Y, self._TH = X, Y, TH
         self._ds, self._K = ds, K
@@ -317,26 +317,26 @@ class PathOptimizer:
         self._x_ref_p, self._y_ref_p, self._th_ref_p = x_ref_p, y_ref_p, th_ref_p
         self._built = True
 
-        # ilk referans değeri (boşsa kendiliğinden doldur)
+        # initial reference values (auto-fill if empty)
         N1 = self.N + 1
         if self.target_type == "point":
             xr = np.full(N1, self.x_ref if self.x_ref is not None else self.X_init)
             yr = np.full(N1, self.y_ref if self.y_ref is not None else self.Y_init)
             tr = np.full(N1, self.theta_ref if self.theta_ref is not None else self.theta_init)
 
-        else:  # 'trajectory' modu veya waypoints
-            # Gelen diziler yoksa geçici olarak 0 vektörü koy
+        else:  # 'trajectory' mode or waypoints
+            # If incoming arrays are missing, use temporary zero vectors
             xr = np.zeros(N1) if self.x_ref is None else np.asarray(self.x_ref, dtype=float)
             yr = np.zeros(N1) if self.y_ref is None else np.asarray(self.y_ref, dtype=float)
             tr = np.zeros(N1) if self.theta_ref is None else np.asarray(self.theta_ref, dtype=float)
 
-        # CasADi parametrelerine ata
+        # assign CasADi parameters
         opti.set_value(x_ref_p, xr)
         opti.set_value(y_ref_p, yr)
         opti.set_value(th_ref_p, tr)
 
     # ================================================================
-    #  Yardımcılar ----------------------------------------------------
+    #  Helpers --------------------------------------------------------
     # ================================================================
     def _update_state(self, x, y, th):
         self._opti.set_value(self._x0_p, x)
@@ -367,7 +367,7 @@ class PathOptimizer:
         self.K_sol = np.array(sol.value(self._K))
 
     # ================================================================
-    #  Yol-takip yardımcı fonksiyonları -------------------------------
+    #  Path-tracking helper functions --------------------------------
     # ================================================================
     @staticmethod
     def compute_progress(current_pos: np.ndarray,
@@ -392,7 +392,7 @@ class PathOptimizer:
         L = np.linalg.norm(path_vec)
         ref = np.zeros((3, N + 1))
 
-        if L < 1e-3:          # çok kısa segment
+        if L < 1e-3:          # very short segment
             ref[:2, :] = np.tile(current_pos, (N + 1, 1)).T
             ref[2, :] = 0.0
             return ref
@@ -429,19 +429,19 @@ class PathOptimizer:
 
 
     # ================================================================
-    #  Basit çizim – MPC sonucu --------------------------------------
+    #  Simple plot - MPC result --------------------------------------
     # ================================================================
     def plot_mpc_trajectory(self):
         fig, ax = plt.subplots(figsize=(12, 12), dpi=150) 
         if not self.mpc_X_hist:
-            raise RuntimeError("mpc_step() hiç çağrılmadı.")
+            raise RuntimeError("mpc_step() was never called.")
         traj = np.column_stack([self.mpc_X_hist, self.mpc_Y_hist])
         prog = np.linspace(0, 1, traj.shape[0])
 
-        fig, ax = plt.subplots(figsize=(7, 7))  # daha kare ve sıkı bir alan
+        fig, ax = plt.subplots(figsize=(7, 7))  # more square and compact area
         ax.plot(traj[:, 0], traj[:, 1], c="royalblue",  linewidth=2.5, label="Samples")
 
-        # --- Kıvrımlı (smooth) yol ---------------------------------
+        # --- Curvilinear (smooth) path -------------------------------
         try:
             Xc, Yc = build_smooth_path(traj, theta0=self.theta_init)
             ax.plot(Xc, Yc, color="royalblue", linewidth=1.8,
@@ -467,7 +467,7 @@ class PathOptimizer:
 
         return fig, ax
     # ================================================================
-    #  Basit çizim – ds / K profili ----------------------------------
+    #  Simple plot - ds / K profile ----------------------------------
 def plot_control_signals(ds_hist, K_hist, title_prefix="Optimal"):
     import numpy as np, matplotlib.pyplot as plt
 
@@ -475,13 +475,13 @@ def plot_control_signals(ds_hist, K_hist, title_prefix="Optimal"):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
 
     # --- ds -----------------------------------------------------------------
-    ax1.stem(steps, ds_hist, basefmt=" ")                 #  ◄◄ parametreyi sildik
+    ax1.stem(steps, ds_hist, basefmt=" ")
     ax1.axhline(0, color='r')
     ax1.set_ylabel("ds [m]")
     ax1.set_title(f"{title_prefix} ds Control Signal")
 
     # --- K ------------------------------------------------------------------
-    ax2.stem(steps, K_hist, linefmt='orange', markerfmt='o', basefmt=" ")  # aynı
+    ax2.stem(steps, K_hist, linefmt='orange', markerfmt='o', basefmt=" ")
     ax2.axhline(0, color='r')
     ax2.set_ylabel("Curvature K [1/m]")
     ax2.set_xlabel("Step Number")
@@ -492,13 +492,13 @@ def plot_control_signals(ds_hist, K_hist, title_prefix="Optimal"):
 
 
 # -----------------------------------------------------------
-#  Seyrek (x,y) noktalarını sabit‑eğrilikli yaylarla doldurur
+#  Fills sparse (x,y) points with constant-curvature arc segments
 # -----------------------------------------------------------
 def build_smooth_path(points, theta0: float = 0.0, n_per_seg: int = 80):
     """
-    points  : (N,2) ndarray veya liste
-    theta0  : İlk segmentin başlangıç yönü [rad]
-    returns : Xc, Yc  (birleştirilmiş kesintisiz eğri)
+    points  : (N,2) ndarray or list
+    theta0  : initial heading of the first segment [rad]
+    returns : Xc, Yc (merged continuous curve)
     """
     import numpy as np
     ds, phi, theta_ends, _ = cartesian_to_curvilinear(points, theta0)
@@ -508,7 +508,7 @@ def build_smooth_path(points, theta0: float = 0.0, n_per_seg: int = 80):
     for i, (ds_i, phi_i) in enumerate(zip(ds, phi)):
         th_start = theta0 if i == 0 else theta_ends[i-1]
         xseg, yseg = sample_arc(x0, y0, th_start, ds_i, phi_i, n=n_per_seg)
-        if x_all:                               # ilk noktayı çiftlememek için
+        if x_all:                               # avoid duplicating first point
             xseg, yseg = xseg[1:], yseg[1:]
         x_all.append(xseg); y_all.append(yseg)
         x0, y0 = points[i+1]
@@ -516,7 +516,7 @@ def build_smooth_path(points, theta0: float = 0.0, n_per_seg: int = 80):
 
 
 # ----------------------------------------------------------------------
-#  Demo – çok-noktalı yol takibi
+#  Demo - multi-waypoint path tracking
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
 
@@ -543,10 +543,10 @@ if __name__ == "__main__":
     
 
 
-    # --- TestMain yaklaşımı: referansı TEK seferde, sabit Δs ile üret ---
-    ds_const = opt.v_desired * opt.dt              # Δs = v_desired · dt
+    # --- TestMain approach: build reference once with constant Delta s ---
+    ds_const = opt.v_desired * opt.dt              # Delta s = v_desired * dt
     opt.x_ref_full, opt.y_ref_full, opt.th_ref_full = \
-            _uniform_reference_from_waypoints(opt.waypoints, ds_const)  # ← yeni
+            _uniform_reference_from_waypoints(opt.waypoints, ds_const)  # new
     opt.ref_index = 0
 
     x, y, th = 0, 0.0, 0
@@ -566,9 +566,9 @@ if __name__ == "__main__":
             x += R * (np.sin(th) - np.sin(th - dth))
             y += -R * (np.cos(th) - np.cos(th - dth))
 
-                # ---- HEDEFE VARMIŞSA ÇIK
+                # ---- EXIT IF TARGET REACHED
         if np.hypot(x - goal[0], y - goal[1]) < 0.5:
-            print(f"[MPC] Zig‑zag hedef  ulaşıldı.")
+            print(f"[MPC] Zig-zag target reached.")
             break
 
     opt.plot_mpc_trajectory()
@@ -576,18 +576,18 @@ if __name__ == "__main__":
     plt.show()
 
 # ----------------------------------------------------------------------
-#  Demo – “minimum dümen açısı değişimi” testia
+#  Demo - "minimum rudder angle change" test
 # ----------------------------------------------------------------------
 
 # =============================================================================
-#  Demo – “minimum rudder‐change (ΔK) cost” karşılaştırması
+#  Demo - "minimum rudder-change (Delta K) cost" comparison
 # =============================================================================
 # if __name__ == "__main__":
 #     import numpy as np
 #     import matplotlib.pyplot as plt
 
 #     # -------------------------------------------------------------------------
-#     # 1) S‑şeklinde rota  (dümen değişimini gözlemlemek için ideal)
+#     # 1) S-shaped route (ideal to observe rudder changes)
 #     wp = np.array([
 #         [0.0,  0.0],
 #         [30.0, 0.0],
@@ -595,15 +595,15 @@ if __name__ == "__main__":
 #         [90.0, 0.0]
 #     ])
 
-#     # Başlangıç durumu (ilk segmente teğet)
+#     # Initial state (tangent to first segment)
 #     dx0, dy0 = wp[1] - wp[0]
 #     theta0   = np.arctan2(dy0, dx0)
 #     X0, Y0   = wp[0]
 
 #     # -------------------------------------------------------------------------
-#     # 2) Ortak MPC parametreleri
+#     # 2) Shared MPC parameters
 #     v_des, dt, N = 2.0, 0.3, 25
-#     ds_const = v_des * dt            # sabit referans aralığı
+#     ds_const = v_des * dt            # uniform reference spacing
 #     K_max    = 0.8                   # [1/m]
 
 #     base_kwargs = dict(
@@ -615,28 +615,28 @@ if __name__ == "__main__":
 #         dt          = dt,
 #         N           = N,
 #         K_max       = K_max,
-#         ds_max      = 2.0,           # ufak adım → virajda esneklik
+#         ds_max      = 2.0,           # small step -> flexibility in turns
 #         w_pos       = 10.0,
 #         w_theta     = 40.0,
-#         w_K_mag     = 0.5            # |K| büyüklüğüne hafif ceza
+#         w_K_mag     = 0.5            # mild penalty on |K| magnitude
 #     )
 
 #     # -------------------------------------------------------------------------
-#     # 3) İki senaryo
-#     #    A) ΔK cezasız   – referans
-#     #    B) ΔK cezası yüksek – pürüzsüz dümen
+#     # 3) Two scenarios
+#     #    A) no Delta K penalty - reference
+#     #    B) high Delta K penalty - smoother rudder
 #     opt_A = PathOptimizer(**base_kwargs, w_K_change=0.0)
 #     opt_B = PathOptimizer(**base_kwargs, w_K_change=10.0)
 
 #     # -------------------------------------------------------------------------
-#     # 4) Tek seferlik global referans (uniform Δs)
+#     # 4) One-shot global reference (uniform Delta s)
 #     for opt in (opt_A, opt_B):
 #         opt.x_ref_full, opt.y_ref_full, opt.th_ref_full = \
 #             _uniform_reference_from_waypoints(wp, ds_const)
 #         opt.ref_index = 0
 
 #     # -------------------------------------------------------------------------
-#     # 5) Basit tek‐iz simülasyonu
+#     # 5) Basic single-track simulation
 #     def simulate(opt):
 #         x, y, th = X0, Y0, theta0
 #         K_hist = []
@@ -650,7 +650,7 @@ if __name__ == "__main__":
 #             y  += -R * (np.cos(th + dth) - np.cos(th))
 #             th += dth
 
-#             # hedefe 0.5 m’den yakınsa dur
+#             # stop if within 0.5 m of target
 #             if np.hypot(x - wp[-1,0], y - wp[-1,1]) < 0.5:
 #                 break
 #         return np.asarray(K_hist)
@@ -659,16 +659,16 @@ if __name__ == "__main__":
 #     K_B = simulate(opt_B)
 
 #     # -------------------------------------------------------------------------
-#     # 6) ΔK RMSE çıktısı
+#     # 6) Delta K RMSE output
 #     rmse = lambda K: np.sqrt(np.mean(np.diff(K)**2))
 #     print(f"ΔK RMSE  (w_K_change = 0)  : {rmse(K_A):.4f}")
 #     print(f"ΔK RMSE  (w_K_change = 10) : {rmse(K_B):.4f}")
 
 #     # -------------------------------------------------------------------------
-#     # 7) K(t) grafiği
+#     # 7) K(t) plot
 #     plt.figure(figsize=(8,4))
-#     plt.plot(K_A, label="K(t) – referans (w_K_change=0)")
-#     plt.plot(K_B, label="K(t) – pürüzsüz (w_K_change=10)", alpha=0.8)
+#     plt.plot(K_A, label="K(t) - reference (w_K_change=0)")
+#     plt.plot(K_B, label="K(t) - smooth (w_K_change=10)", alpha=0.8)
 #     plt.title("Curvature history comparison")
 #     plt.xlabel("MPC step"); plt.ylabel("K  [1/m]")
 #     plt.grid(True); plt.legend(); plt.tight_layout(); plt.show()

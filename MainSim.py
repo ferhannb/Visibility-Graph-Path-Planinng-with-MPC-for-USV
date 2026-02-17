@@ -24,7 +24,7 @@ from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from shapely.geometry import Polygon as ShapelyPolygon, JOIN_STYLE
-# smooth‑curve yardımcıları
+# smooth-curve helpers
 from plotCurvelinearArc import cartesian_to_curvilinear, sample_arc
 
 
@@ -224,10 +224,10 @@ def plot_environment(cfg: ScenarioConfig, original_obs, inflated_obs, opt: PathO
     })
 
     # --------------------------------
-    #  Veriler
+    #  Data
     # --------------------------------
     if not opt.mpc_X_hist:
-        raise RuntimeError("MPC henüz çalışmadı, çizilecek veri yok.")
+        raise RuntimeError("MPC has not run yet; there is no data to plot.")
 
     traj = np.column_stack([opt.mpc_X_hist, opt.mpc_Y_hist])
     prog = np.linspace(0, 1, traj.shape[0])
@@ -237,20 +237,20 @@ def plot_environment(cfg: ScenarioConfig, original_obs, inflated_obs, opt: PathO
     # --------------------------------
     fig, ax = plt.subplots(figsize=(10, 10), dpi=150)
 
-    # ---- MPC kapalı-döngü trajesi
+    # ---- MPC closed-loop trajectory
     # sc = ax.scatter(traj[:, 0], traj[:, 1],
     #                 s=30, label="Trajectory")
     # sc.set_rasterized(True)
 
 
-    # ---- Waypoint'ler
+    # ---- Waypoints
     if opt.waypoints is not None:
         ax.plot(opt.waypoints[:, 0], opt.waypoints[:, 1], "r--o",
                 markersize=5, linewidth=2, label="Waypoints")
 
 
 
-    # ---- Engeller
+    # ---- Obstacles
     for poly in original_obs:
         xs, ys = zip(*(poly + [poly[0]]))
         ax.fill(xs, ys, facecolor="lightgray", edgecolor="dimgray",
@@ -268,7 +268,7 @@ def plot_environment(cfg: ScenarioConfig, original_obs, inflated_obs, opt: PathO
     except Exception as e:
         print("[curve‑warn]", e) 
 
-    # ---- Başlangıç / Hedef
+    # ---- Start / Goal
     ax.scatter(cfg.start[0], cfg.start[1], marker="*", color="green", s=180, label="Start")
     ax.scatter(cfg.goal[0],  cfg.goal[1],  marker="X", color="red",   s=220, label="Goal")
 
@@ -291,7 +291,7 @@ def plot_environment(cfg: ScenarioConfig, original_obs, inflated_obs, opt: PathO
     all_y = np.concatenate([traj[:, 1], opt.y_ref_full,
                             opt.waypoints[:, 1], obs_xy[:, 1]])
 
-    # Dinamik margin: menzil’in %5’i + 1 m
+    # Dynamic margin: 5% of span + 1 m
     span = max(all_x.max() - all_x.min(),
                all_y.max() - all_y.min())
     margin = 0.05 * span + 1.0
@@ -393,10 +393,11 @@ def plot_ds_K(opt, mode='dsK', dt=None):
 
 def build_smooth_path(points, theta0: float = 0.0, n_per_seg: int = 80):
     """
-    Seyrek (x,y) dizisinden sabit‑eğrilikli yaylarla ara noktalar üretir.
-    points  : [(x0,y0), (x1,y1), ...]  (numpy Nx2 veya liste)
-    theta0  : İlk segmentin baş yönü (rad) — genelde aracın başlığı
-    returns : X_curve, Y_curve  (numpy 1‑D)
+    Generates intermediate points from sparse (x, y) samples using
+    constant-curvature arc segments.
+    points  : [(x0,y0), (x1,y1), ...]  (numpy Nx2 or list)
+    theta0  : Initial heading of the first segment (rad), usually vessel heading
+    returns : X_curve, Y_curve  (numpy 1-D)
     """
     import numpy as np
     ds, phi, theta_ends, _ = cartesian_to_curvilinear(points, theta0)
@@ -406,7 +407,7 @@ def build_smooth_path(points, theta0: float = 0.0, n_per_seg: int = 80):
     for i, (ds_i, phi_i) in enumerate(zip(ds, phi)):
         th_start = theta0 if i == 0 else theta_ends[i-1]
         xseg, yseg = sample_arc(x0, y0, th_start, ds_i, phi_i, n=n_per_seg)
-        # parçaları birleştirirken ilk noktayı çiftlememek için atla
+        # Skip first point to avoid duplicating segment junctions
         if x_curves:
             xseg, yseg = xseg[1:], yseg[1:]
         x_curves.append(xseg); y_curves.append(yseg)
@@ -420,7 +421,7 @@ def build_smooth_path(points, theta0: float = 0.0, n_per_seg: int = 80):
 def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Visibility Graph + MPC demo")
     parser.add_argument('--start-heading', type=float, default=60,
-                    help="Başlangıç heading açısı [rad]")
+                    help="Initial heading angle [rad]")
     parser.add_argument('--algo', choices=['classic', 'quadtree'], default='quadtree')
     parser.add_argument('--area-size', type=int, default=75)
     parser.add_argument('--num-obs', type=int, default=30)
